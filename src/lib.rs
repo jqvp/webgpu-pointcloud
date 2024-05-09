@@ -1,6 +1,6 @@
 use std::iter;
-use std::collections::HashMap;
 
+use wgpu::util::DeviceExt;
 use winit::{
     event::*,
     event_loop::EventLoop,
@@ -11,14 +11,56 @@ use winit::{
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
+const WIDTH: u32 = 500;
+const HEIGHT: u32 = 500;
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+struct Vertex {
+    position: [f32; 3],
+}
+unsafe impl bytemuck::Pod for Vertex {}
+unsafe impl bytemuck::Zeroable for Vertex {}
+
+impl Vertex {
+    fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &[
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 0,
+                    format: wgpu::VertexFormat::Float32x3,
+                },
+            ],
+        }
+    }
+}
+
+const VERTICES: &[Vertex] = &[
+    Vertex { position: [-0.5, -0.5, 0.,]},
+    Vertex { position: [0.5, -0.5, 0.,]},
+    Vertex { position: [-0.5, 0.5, 0.,]},
+    Vertex { position: [-0.5, 0.5, 0.,]},
+    Vertex { position: [0.5, -0.5, 0.,]},
+    Vertex { position: [0.5, 0.5, 0.,]},
+];
+
+
+const INDICES: &[u16] = &[0, 1, 2, 3, 4, 5];
+
 struct State<'a> {
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
-    // NEW!
     render_pipeline: wgpu::RenderPipeline,
+    // NEW!
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer,
+    num_indices: u32,
     window: &'a Window,
 }
 
@@ -32,10 +74,14 @@ impl<'a> State<'a> {
             #[cfg(not(target_arch = "wasm32"))]
             backends: wgpu::Backends::PRIMARY,
             #[cfg(target_arch = "wasm32")]
-            backends: wgpu::Backends::BROWSER_WEBGPU,
+            backends: wgpu::Backends::GL,
             ..Default::default()
         });
 
+        // # Safety
+        //
+        // The surface needs to live as long as the window that created it.
+        // State owns the window so this should be safe.
         let surface = instance.create_surface(window).unwrap();
 
         let adapter = instance
@@ -104,13 +150,8 @@ impl<'a> State<'a> {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions {
-                    constants: &HashMap::from([
-                        ("circleEnabled".into(), 0.)
-                    ]),
-                    zero_initialize_workgroup_memory: false,
-                },
+                buffers: &[Vertex::desc()],
+                compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -149,13 +190,28 @@ impl<'a> State<'a> {
             multiview: None,
         });
 
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Vertex Buffer"),
+            contents: bytemuck::cast_slice(VERTICES),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Index Buffer"),
+            contents: bytemuck::cast_slice(INDICES),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        let num_indices = INDICES.len() as u32;
+
         Self {
             surface,
             device,
             queue,
-            size,
             config,
+            size,
             render_pipeline,
+            vertex_buffer,
+            index_buffer,
+            num_indices,
             window,
         }
     }
@@ -214,7 +270,9 @@ impl<'a> State<'a> {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.draw(0..3, 0..1);
+            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
         }
 
         self.queue.submit(iter::once(encoder.finish()));
@@ -243,14 +301,16 @@ pub async fn run() {
         // Winit prevents sizing with CSS, so we have to set
         // the size manually when on web.
         use winit::dpi::PhysicalSize;
-        let _ = window.request_inner_size(PhysicalSize::new(450, 400));
+        let _ = window.request_inner_size(PhysicalSize::new(WIDTH, HEIGHT));
 
         use winit::platform::web::WindowExtWebSys;
         web_sys::window()
             .and_then(|win| win.document())
             .and_then(|doc| {
-                let dst = doc.get_element_by_id("wasm-example")?;
-                let canvas = web_sys::Element::from(window.canvas()?);
+                let dst = doc.get_element_by_id("body")?;
+                let canvas = window.canvas()?;
+                canvas.set_height(WIDTH);
+                canvas.set_width(HEIGHT);
                 dst.append_child(&canvas).ok()?;
                 Some(())
             })
