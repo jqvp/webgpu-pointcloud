@@ -48,8 +48,12 @@ pub const SQUARE: &[Vertex] = &[
 
 pub fn get_points(quantity: usize) -> Vec<Vertex> {
     let mut rng: Rng = Rng::with_seed(10);
-    let vertices = Vec::<Vertex>::with_capacity(quantity);
-    vertices.into_iter().map(|_| Vertex { position: [ rng.f32(), rng.f32(), rng.f32()] }).collect()
+    let mut vertices = Vec::<Vertex>::with_capacity(quantity);
+    for _ in 0..quantity {
+        vertices.push(Vertex { position: [ rng.f32()-0.5, rng.f32()-0.5, rng.f32()-0.5] });
+    }
+
+    vertices
 }
 
 // We need this for Rust to store our data correctly for the shaders

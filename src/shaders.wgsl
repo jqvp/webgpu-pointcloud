@@ -50,7 +50,7 @@ struct Uniforms {
 };
 @group(0) @binding(0) var<uniform> unif: Uniforms;
 
-@vertex fn vertex_main(in: VertexIn) -> VertexOut {
+@vertex fn vs_main(in: VertexIn) -> VertexOut {
   var point = unif.viewMatrix * unif.modelMatrix * vec4f(in.point, 1);
   point = point/point.w;
   let vert = point + vec4f(in.vert.x * unif.pixels / unif.width * 2, in.vert.y * unif.pixels / unif.height * 2, 0, 0);
@@ -58,7 +58,7 @@ struct Uniforms {
   return VertexOut(vert, in.vert.xy, toFragmentCoords(point.x, point.y));
 } 
 
-@fragment fn fragment_main(in: VertexOut) -> @location(0) vec4f {
+@fragment fn fs_main(in: VertexOut) -> @location(0) vec4f {
   if circleEnabled && distance(in.position.xy, in.point) > 3 {
     discard;
   }

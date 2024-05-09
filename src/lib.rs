@@ -41,16 +41,6 @@ impl Vertex {
     }
 }
 
-const VERTICES: &[Vertex] = &[
-    Vertex { position: [-0.5, -0.5, 0.,]},
-    Vertex { position: [0.5, -0.5, 0.,]},
-    Vertex { position: [-0.5, 0.5, 0.,]},
-    Vertex { position: [-0.5, 0.5, 0.,]},
-    Vertex { position: [0.5, -0.5, 0.,]},
-    Vertex { position: [0.5, 0.5, 0.,]},
-];
-
-
 const INDICES: &[u16] = &[0, 1, 2, 3, 4, 5];
 
 struct State<'a> {
@@ -69,6 +59,9 @@ struct State<'a> {
     uniform_buffer: wgpu::Buffer,
     uniform: CameraUniform,
     uniform_bind_group: wgpu::BindGroup,
+    point_buffer: wgpu::Buffer,
+    num_points: u32,
+    frame: f32,
 }
 
 impl<'a> State<'a> {
@@ -140,7 +133,7 @@ impl<'a> State<'a> {
         };
 
         let camera = Camera {
-            eye: (0.0, 0.0, 5.0).into(),
+            eye: (0.0, 0.0, 2.0).into(),
             target: (0.0, 0.0, 0.0).into(),
             up: cgmath::Vector3::unit_y(),
             aspect: config.width as f32 / config.height as f32,
@@ -160,6 +153,20 @@ impl<'a> State<'a> {
             }
         );
         queue.write_buffer(&uniform_buffer, 0, bytemuck::cast_slice(&[uniform]));
+
+        let num_points = 10_000;
+        let points = get_points(num_points as usize);
+
+
+        let point_buffer = device.create_buffer(
+            &wgpu::BufferDescriptor {
+                label: Some("Point Buffer"),
+                size: (points.len()*12) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }
+        );
+        queue.write_buffer(&point_buffer, 0, bytemuck::cast_slice(&points));
 
         let uniform_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
@@ -190,7 +197,7 @@ impl<'a> State<'a> {
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders.wgsl").into()),
         });
 
         let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -205,7 +212,20 @@ impl<'a> State<'a> {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[Vertex::desc()],
+                buffers: &[
+                    Vertex::desc(),
+                    wgpu::VertexBufferLayout {
+                        attributes: &[
+                            wgpu::VertexAttribute {
+                                shader_location: 1,
+                                offset: 0,
+                                format: wgpu::VertexFormat::Float32x3,
+                            }
+                        ],
+                        array_stride: 12,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                    },
+                ],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -247,7 +267,7 @@ impl<'a> State<'a> {
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(VERTICES),
+            contents: bytemuck::cast_slice(SQUARE),
             usage: wgpu::BufferUsages::VERTEX,
         });
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -272,6 +292,9 @@ impl<'a> State<'a> {
             uniform,
             uniform_bind_group,
             camera,
+            num_points,
+            point_buffer,
+            frame: 0.,
         }
     }
 
@@ -296,6 +319,11 @@ impl<'a> State<'a> {
     fn update(&mut self) {}
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        self.frame += 0.001;
+        self.camera.eye = (2. * self.frame.cos(), 0.0, 2. * self.frame.sin()).into();
+        self.uniform.update_view_proj(&self.camera);
+
+        self.queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[self.uniform]));
         let output = self.surface.get_current_texture()?;
         let view = output
             .texture
@@ -330,9 +358,10 @@ impl<'a> State<'a> {
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            render_pass.set_vertex_buffer(1, self.point_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+            render_pass.draw_indexed(0..self.num_indices, 0, 0..self.num_points);
         }
 
         self.queue.submit(iter::once(encoder.finish()));
