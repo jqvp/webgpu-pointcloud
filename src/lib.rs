@@ -62,6 +62,8 @@ struct State<'a> {
     point_buffer: wgpu::Buffer,
     num_points: u32,
     frame: f32,
+    intensity_buffer: wgpu::Buffer,
+    depth_view: wgpu::TextureView,
 }
 
 impl<'a> State<'a> {
@@ -146,7 +148,7 @@ impl<'a> State<'a> {
 
         let uniform_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
-                label: Some("Point Buffer"),
+                label: Some("Uniform Buffer"),
                 size: (std::mem::size_of::<CameraUniform>()) as u64,
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
@@ -157,7 +159,6 @@ impl<'a> State<'a> {
         let num_points = 10_000;
         let points = get_points(num_points as usize);
 
-
         let point_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
                 label: Some("Point Buffer"),
@@ -167,6 +168,18 @@ impl<'a> State<'a> {
             }
         );
         queue.write_buffer(&point_buffer, 0, bytemuck::cast_slice(&points));
+
+        let intensities = get_intensities(num_points as usize);
+
+        let intensity_buffer = device.create_buffer(
+            &wgpu::BufferDescriptor {
+                label: Some("Intensity Buffer"),
+                size: (intensities.len()*4) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }
+        );
+        queue.write_buffer(&intensity_buffer, 0, bytemuck::cast_slice(&intensities));
 
         let uniform_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
@@ -197,8 +210,24 @@ impl<'a> State<'a> {
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders2.wgsl").into()),
         });
+
+        let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("depth texture"),
+            size: wgpu::Extent3d {
+                width: config.width,
+                height: config.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth32Float,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[wgpu::TextureFormat::Depth32Float],
+        });
+        let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Render Pipeline Layout"),
@@ -223,6 +252,17 @@ impl<'a> State<'a> {
                             }
                         ],
                         array_stride: 12,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                    },
+                    wgpu::VertexBufferLayout {
+                        attributes: &[
+                            wgpu::VertexAttribute {
+                                shader_location: 2,
+                                offset: 0,
+                                format: wgpu::VertexFormat::Float32,
+                            }
+                        ],
+                        array_stride: 4,
                         step_mode: wgpu::VertexStepMode::Instance,
                     },
                 ],
@@ -254,7 +294,13 @@ impl<'a> State<'a> {
                 // Requires Features::CONSERVATIVE_RASTERIZATION
                 conservative: false,
             },
-            depth_stencil: None,
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
             multisample: wgpu::MultisampleState {
                 count: 1,
                 mask: !0,
@@ -295,6 +341,8 @@ impl<'a> State<'a> {
             num_points,
             point_buffer,
             frame: 0.,
+            intensity_buffer,
+            depth_view,
         }
     }
 
@@ -351,7 +399,14 @@ impl<'a> State<'a> {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
@@ -359,6 +414,7 @@ impl<'a> State<'a> {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_vertex_buffer(1, self.point_buffer.slice(..));
+            render_pass.set_vertex_buffer(2, self.intensity_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
             render_pass.draw_indexed(0..self.num_indices, 0, 0..self.num_points);

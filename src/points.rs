@@ -56,6 +56,16 @@ pub fn get_points(quantity: usize) -> Vec<Vertex> {
     vertices
 }
 
+pub fn get_intensities(quantity: usize) -> Vec<f32> {
+    let mut rng: Rng = Rng::with_seed(10);
+    let mut intensities = Vec::<f32>::with_capacity(quantity);
+    for _ in 0..quantity {
+        intensities.push(rng.f32());
+    }
+
+    intensities
+}
+
 // We need this for Rust to store our data correctly for the shaders
 #[repr(C)]
 // This is so we can store this in a buffer
