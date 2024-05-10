@@ -64,6 +64,7 @@ struct State<'a> {
     frame: f32,
     intensity_buffer: wgpu::Buffer,
     depth_view: wgpu::TextureView,
+    depth_texture: wgpu::Texture,
 }
 
 impl<'a> State<'a> {
@@ -76,7 +77,7 @@ impl<'a> State<'a> {
             #[cfg(not(target_arch = "wasm32"))]
             backends: wgpu::Backends::PRIMARY,
             #[cfg(target_arch = "wasm32")]
-            backends: wgpu::Backends::GL,
+            backends: wgpu::Backends::BROWSER_WEBGPU,
             ..Default::default()
         });
 
@@ -343,6 +344,7 @@ impl<'a> State<'a> {
             frame: 0.,
             intensity_buffer,
             depth_view,
+            depth_texture,
         }
     }
 
