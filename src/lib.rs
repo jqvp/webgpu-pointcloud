@@ -63,8 +63,8 @@ struct State<'a> {
     num_points: u32,
     frame: f32,
     intensity_buffer: wgpu::Buffer,
-    //depth_view: wgpu::TextureView,
-    //depth_texture: wgpu::Texture,
+    depth_view: wgpu::TextureView,
+    depth_texture: wgpu::Texture,
 }
 
 impl<'a> State<'a> {
@@ -103,11 +103,7 @@ impl<'a> State<'a> {
                     required_features: wgpu::Features::empty(),
                     // WebGL doesn't support all of wgpu's features, so if
                     // we're building for the web we'll have to disable some.
-                    required_limits: if cfg!(target_arch = "wasm32") {
-                        wgpu::Limits::downlevel_webgl2_defaults()
-                    } else {
-                        wgpu::Limits::default()
-                    },
+                    required_limits: wgpu::Limits::default(),
                 },
                 None, // Trace path
             )
@@ -157,7 +153,7 @@ impl<'a> State<'a> {
         );
         queue.write_buffer(&uniform_buffer, 0, bytemuck::cast_slice(&[uniform]));
 
-        let num_points = 10_000;
+        let num_points = 10;
         let points = get_points(num_points as usize);
 
         let point_buffer = device.create_buffer(
@@ -214,21 +210,21 @@ impl<'a> State<'a> {
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders2.wgsl").into()),
         });
 
-        /*let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
+        let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("depth texture"),
             size: wgpu::Extent3d {
-                width: config.width,
-                height: config.height,
+                width: config.width.max(500),
+                height: config.height.max(500),
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Depth32Float,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[wgpu::TextureFormat::Depth32Float],
         });
-        let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());*/
+        let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Render Pipeline Layout"),
@@ -295,13 +291,13 @@ impl<'a> State<'a> {
                 // Requires Features::CONSERVATIVE_RASTERIZATION
                 conservative: false,
             },
-            depth_stencil: None, /*Some(wgpu::DepthStencilState {
+            depth_stencil: Some(wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth32Float,
                 depth_write_enabled: true,
                 depth_compare: wgpu::CompareFunction::Less,
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
-            }),*/
+            }),
             multisample: wgpu::MultisampleState {
                 count: 1,
                 mask: !0,
@@ -343,8 +339,8 @@ impl<'a> State<'a> {
             point_buffer,
             frame: 0.,
             intensity_buffer,
-            //depth_view,
-            //depth_texture,
+            depth_view,
+            depth_texture,
         }
     }
 
@@ -358,6 +354,25 @@ impl<'a> State<'a> {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
+            self.camera.aspect = self.config.width as f32 / self.config.height as f32;
+            // NEW!
+            self.depth_texture = self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("depth texture"),
+                size: wgpu::Extent3d {
+                    width: self.config.width.max(1),
+                    height: self.config.height.max(1),
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Depth32Float,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[wgpu::TextureFormat::Depth32Float],
+            });
+            self.depth_view = self.depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
+            self.uniform.width = self.config.width as f32;
+            self.uniform.height = self.config.height as f32;
         }
     }
 
@@ -366,14 +381,14 @@ impl<'a> State<'a> {
         false
     }
 
-    fn update(&mut self) {}
-
-    fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+    fn update(&mut self) {
         self.frame += 0.001;
         self.camera.eye = (2. * self.frame.cos(), 0.0, 2. * self.frame.sin()).into();
         self.uniform.update_view_proj(&self.camera);
-
         self.queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[self.uniform]));
+    }
+
+    fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
         let view = output
             .texture
@@ -401,14 +416,14 @@ impl<'a> State<'a> {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None, /*Some(wgpu::RenderPassDepthStencilAttachment {
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.depth_view,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: wgpu::StoreOp::Store,
                     }),
                     stencil_ops: None,
-                }),*/
+                }),
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
@@ -456,9 +471,10 @@ pub async fn run() {
             .and_then(|doc| {
                 let dst = doc.get_element_by_id("body")?;
                 let canvas = window.canvas()?;
-                canvas.set_height(WIDTH);
-                canvas.set_width(HEIGHT);
-                dst.append_child(&canvas).ok()?;
+                canvas.set_height(500);
+                canvas.set_width(500);
+                let canvas2 = web_sys::Element::from(canvas);
+                dst.append_child(&canvas2).ok()?;
                 Some(())
             })
             .expect("Couldn't append canvas to document body.");

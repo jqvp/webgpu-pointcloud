@@ -27,7 +27,7 @@ fn hueToRgb(p: f32, q: f32, t: f32) -> f32 {
   return p;
 }
 fn toFragmentCoords(x: f32, y: f32) -> vec2f {
-  return vec2f((x+1) * 0.5 * unif.width, (-y+1) * 0.5 * unif.height);
+  return vec2f((x+1) * 0.5 * 500., (-y+1) * 0.5 * 500.);
 }
 
 struct VertexIn {
@@ -49,13 +49,13 @@ struct Uniforms {
   width: f32,
   height: f32,
   pixels: f32,
-  modelMatrix: mat4x4f,
-  viewMatrix: mat4x4f,
+  view_matrix: mat4x4f,
+  model_matrix: mat4x4f,
 };
 @group(0) @binding(0) var<uniform> unif: Uniforms;
 
 @vertex fn vs_main(in: VertexIn) -> VertexOut {
-  var point = unif.viewMatrix * unif.modelMatrix * vec4f(in.point, 1);
+  var point = unif.view_matrix * unif.model_matrix * vec4f(in.point, 1);
   point = point/point.w;
   let vert = point + vec4f(in.vert.x * unif.pixels / unif.width * 2, in.vert.y * unif.pixels / unif.height * 2, 0, 0);
 
