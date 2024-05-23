@@ -27,7 +27,7 @@ fn hueToRgb(p: f32, q: f32, t: f32) -> f32 {
   return p;
 }
 fn toFragmentCoords(x: f32, y: f32) -> vec2f {
-  return vec2f((x+1) * 0.5 * 500., (-y+1) * 0.5 * 500.);
+  return vec2f((x+1) * 0.5 * unif.width, (-y+1) * 0.5 * unif.height);
 }
 
 struct VertexIn {
