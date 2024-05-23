@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+  <!-- STEP 1: Prepare the canvas -->
+  <head>
+    <style>
+      canvas {
+       
+      }
+      body,
+      html {
+        overflow: hidden;
+      }
+    </style>
+    <meta name="viewport" content="width=device-width, user-scalable=no" />
+  </head>
+
+  <body style="margin: 0; background: #333;" id="wasm-example">
+
+    <script type="module">
+      import init from "/pkg/ejemplo_wasm_webgpu.js";
+      init();
+    </script>
+  </body>
+</html>

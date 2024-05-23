@@ -1,0 +1,15 @@
+{
+  "name": "ctim-webpage",
+  "version": "1.0.0",
+  "description": "Server para ver Potree",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.4.1",
+    "express": "^4.18.2"
+  }
+}
