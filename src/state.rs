@@ -7,8 +7,7 @@ use winit::{
     window::Window,
 };
 
-use crate::vertex::Vertex;
-use crate::points::*;
+use crate::{pointcloud::Pointcloud, points::*};
 
 const INDICES: &[u16] = &[0, 1, 2, 3, 4, 5];
 
@@ -19,7 +18,6 @@ pub struct State<'a> {
     config: wgpu::SurfaceConfiguration,
     pub size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
-    // NEW!
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     num_indices: u32,
@@ -29,7 +27,7 @@ pub struct State<'a> {
     uniform: CameraUniform,
     uniform_bind_group: wgpu::BindGroup,
     point_buffer: wgpu::Buffer,
-    num_points: u32,
+    pointcloud: Pointcloud,
     frame: f32,
     intensity_buffer: wgpu::Buffer,
     depth_view: wgpu::TextureView,
@@ -122,8 +120,8 @@ impl<'a> State<'a> {
         );
         queue.write_buffer(&uniform_buffer, 0, bytemuck::cast_slice(&[uniform]));
 
-        let num_points = 10000;
-        let points = get_points(num_points as usize);
+        let pointcloud = Pointcloud::from_las("localhost/pointclouds/000029-buildings.las").await.unwrap();
+        let points = pointcloud.points();
 
         let point_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
@@ -135,7 +133,7 @@ impl<'a> State<'a> {
         );
         queue.write_buffer(&point_buffer, 0, bytemuck::cast_slice(&points));
 
-        let intensities = get_intensities(num_points as usize);
+        let intensities = get_intensities(points.len() as usize);
 
         let intensity_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
@@ -304,7 +302,7 @@ impl<'a> State<'a> {
             uniform,
             uniform_bind_group,
             camera,
-            num_points,
+            pointcloud,
             point_buffer,
             frame: 0.,
             intensity_buffer,
@@ -324,7 +322,6 @@ impl<'a> State<'a> {
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
             self.camera.aspect = self.config.width as f32 / self.config.height as f32;
-            // NEW!
             self.depth_texture = self.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("depth texture"),
                 size: wgpu::Extent3d {
@@ -403,7 +400,7 @@ impl<'a> State<'a> {
             render_pass.set_vertex_buffer(2, self.intensity_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..self.num_points);
+            render_pass.draw_indexed(0..self.num_indices, 0, 0..self.pointcloud.points().len() as u32);
         }
 
         self.queue.submit(iter::once(encoder.finish()));
