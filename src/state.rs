@@ -99,13 +99,13 @@ impl<'a> State<'a> {
         };
 
         let camera = Camera {
-            eye: (0.0, 0.0, 2.0).into(),
+            eye: (0.0, 0.0, 10.0).into(),
             target: (0.0, 0.0, 0.0).into(),
             up: cgmath::Vector3::unit_y(),
             aspect: config.width as f32 / config.height as f32,
             fovy: 60.,
             znear: 0.1,
-            zfar: 100.,
+            zfar: 10000.,
         };
         let mut uniform = CameraUniform::new(config.width as f32, config.height as f32);
         uniform.update_view_proj(&camera);
@@ -120,7 +120,7 @@ impl<'a> State<'a> {
         );
         queue.write_buffer(&uniform_buffer, 0, bytemuck::cast_slice(&[uniform]));
 
-        let pointcloud = Pointcloud::from_las("localhost/pointclouds/000029-buildings.las").await.unwrap();
+        let pointcloud = Pointcloud::from_las("http://localhost:50505/pointclouds/000029-buildings.las").await.unwrap();
         let points = pointcloud.points();
 
         let point_buffer = device.create_buffer(

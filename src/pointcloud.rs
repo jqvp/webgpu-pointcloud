@@ -35,20 +35,25 @@ impl Pointcloud {
 
             let mut reader = Reader::new(Cursor::new(las_vec)).unwrap();
             let mut points = Vec::new();
+            let x_half = (reader.header().bounds().max.x - reader.header().bounds().min.x).to_f32().unwrap() * 0.5;
+            let y_half = (reader.header().bounds().max.y - reader.header().bounds().min.y).to_f32().unwrap() * 0.5;
+            let z_half = (reader.header().bounds().max.z - reader.header().bounds().min.z).to_f32().unwrap() * 0.5;
             for wrapped_point in reader.points() {
                 let point = wrapped_point.unwrap();
-                points.push(Vertex::new(point.x.to_f32().unwrap(), point.y.to_f32().unwrap(), point.z.to_f32().unwrap()));
+                points.push(Vertex::new(point.x.to_f32().unwrap() - x_half, point.y.to_f32().unwrap() - y_half, point.z.to_f32().unwrap() - z_half));
             }
 
             Ok(Pointcloud { points })
         } else {
-            let body = reqwest::get(url)
-            .await?.bytes().await?;
+            let body = reqwest::blocking::get(url)?.bytes()?;
             let mut reader = Reader::new(Cursor::new(body)).unwrap();
             let mut points = Vec::new();
+            let x_half = (reader.header().bounds().max.x - reader.header().bounds().min.x).to_f32().unwrap() * 0.5;
+            let y_half = (reader.header().bounds().max.y - reader.header().bounds().min.y).to_f32().unwrap() * 0.5;
+            let z_half = (reader.header().bounds().max.z - reader.header().bounds().min.z).to_f32().unwrap() * 0.5;
             for wrapped_point in reader.points() {
                 let point = wrapped_point.unwrap();
-                points.push(Vertex::new(point.x.to_f32().unwrap(), point.y.to_f32().unwrap(), point.z.to_f32().unwrap()));
+                points.push(Vertex::new(point.x.to_f32().unwrap() - x_half, point.y.to_f32().unwrap() - y_half, point.z.to_f32().unwrap() - z_half));
             }
 
             Ok(Pointcloud { points })

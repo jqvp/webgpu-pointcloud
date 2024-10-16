@@ -11,6 +11,7 @@ require('dotenv').config();
 
 // http://expressjs.com/en/starter/static-files.html
 app.use("/pkg", express.static('pkg'));
+app.use("/pointclouds", express.static('pointclouds'));
 
 // http://expressjs.com/en/starter/basic-routing.html
 app.get("/", function (request, response) {
