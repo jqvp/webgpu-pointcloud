@@ -2,21 +2,23 @@ mod points;
 mod state;
 mod pointcloud;
 
+use std::sync::Arc;
 use winit::{
-    event::*,
-    event_loop::EventLoop,
-    keyboard::{KeyCode, PhysicalKey},
-    window::WindowBuilder,
+    event::WindowEvent,
+    application::ApplicationHandler,
+    event_loop::{ActiveEventLoop, EventLoop},
+    window::{Window, WindowId},
 };
-use state::*;
 
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
+use state::*;
 
 #[allow(unused)]
 const WIDTH: u32 = 500;
 #[allow(unused)]
 const HEIGHT: u32 = 500;
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub async fn run() {
@@ -30,90 +32,80 @@ pub async fn run() {
     }
 
     let event_loop = EventLoop::new().unwrap();
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        // Winit prevents sizing with CSS, so we have to set
-        // the size manually when on web.
-        use winit::dpi::PhysicalSize;
-        let _ = window.request_inner_size(PhysicalSize::new(WIDTH, HEIGHT));
-
-        use winit::platform::web::WindowExtWebSys;
-        web_sys::window()
-            .and_then(|win| win.document())
-            .and_then(|doc| {
-                let dst = doc.get_element_by_id("body")?;
-                let canvas = window.canvas()?;
-                canvas.set_height(500);
-                canvas.set_width(500);
-                let canvas2 = web_sys::Element::from(canvas);
-                dst.append_child(&canvas2).ok()?;
-                Some(())
-            })
-            .expect("Couldn't append canvas to document body.");
-    }
 
     // State::new uses async code, so we're going to wait for it to finish
-    let mut state = State::new(&window).await;
-    let mut surface_configured = false;
+    let mut window_state = StateApplication::new();
+    let _ = event_loop.run_app(&mut window_state);
+}
 
-    event_loop
-        .run(move |event, control_flow| {
+
+struct StateApplication {
+    state: Option<State>,
+}
+
+impl StateApplication {
+    pub fn new() -> Self {
+        Self { state: None }
+    }
+}
+
+impl ApplicationHandler for StateApplication {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        let window = Arc::new(event_loop
+                    .create_window(Window::default_attributes()
+                    .with_title("Pointcloud Viewer"))
+                    .unwrap());
+
+        #[cfg(target_arch = "wasm32")] {
+            use winit::dpi::PhysicalSize;
+            use winit::platform::web::WindowExtWebSys;
+
+            let _ = window.request_inner_size(PhysicalSize::new(WIDTH, HEIGHT));
+
+            web_sys::window()
+                .and_then(|win| win.document())
+                .and_then(|doc| {
+                    let dst = doc.get_element_by_id("body")?;
+                    let canvas = window.canvas()?;
+                    canvas.set_height(HEIGHT);
+                    canvas.set_width(WIDTH);
+                    let canvas2 = web_sys::Element::from(canvas);
+                    dst.append_child(&canvas2).ok()?;
+                    Some(())
+                })
+                .expect("Couldn't append canvas to document body.");
+        }
+
+        self.state = Some(State::new(window));
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        let window = self.state.as_ref().unwrap().window();
+
+        if window.id() == window_id {
             match event {
-                Event::WindowEvent {
-                    ref event,
-                    window_id,
-                } if window_id == state.window().id() => {
-                    if !state.input(event) {
-                        match event {
-                            WindowEvent::CloseRequested
-                            | WindowEvent::KeyboardInput {
-                                event:
-                                    KeyEvent {
-                                        state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::Escape),
-                                        ..
-                                    },
-                                ..
-                            } => control_flow.exit(),
-                            WindowEvent::Resized(physical_size) => {
-                                surface_configured = true;
-                                state.resize(*physical_size);
-                            }
-                            WindowEvent::RedrawRequested => {
-                                // This tells winit that we want another frame after this one
-                                state.window().request_redraw();
-
-                                if !surface_configured {
-                                    return;
-                                }
-
-                                state.update();
-                                match state.render() {
-                                    Ok(_) => {}
-                                    // Reconfigure the surface if it's lost or outdated
-                                    Err(
-                                        wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
-                                    ) => state.resize(state.size),
-                                    // The system is out of memory, we should probably quit
-                                    Err(wgpu::SurfaceError::OutOfMemory) => {
-                                        log::error!("OutOfMemory");
-                                        control_flow.exit();
-                                    }
-
-                                    // This happens when the a frame takes too long to present
-                                    Err(wgpu::SurfaceError::Timeout) => {
-                                        log::warn!("Surface timeout")
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
+                WindowEvent::CloseRequested => {
+                    event_loop.exit();
+                }
+                WindowEvent::Resized(physical_size) => {
+                    self.state.as_mut().unwrap().resize(physical_size);
+                }
+                WindowEvent::RedrawRequested => {
+                    self.state.as_mut().unwrap().update();
+                    self.state.as_mut().unwrap().render().expect("Render ERROR!");
                 }
                 _ => {}
             }
-        })
-        .unwrap();
+        }
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        let window = self.state.as_ref().unwrap().window();
+        window.request_redraw();
+    }
 }

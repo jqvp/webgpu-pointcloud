@@ -1,6 +1,7 @@
 
-use std::iter;
-
+use std::{iter, sync::Arc};
+use glam::Vec3;
+use pollster::FutureExt;
 use wgpu::util::DeviceExt;
 use winit::{
     event::*,
@@ -11,8 +12,8 @@ use crate::{pointcloud::Pointcloud, points::*};
 
 const INDICES: &[u16] = &[0, 1, 2, 3, 4, 5];
 
-pub struct State<'a> {
-    surface: wgpu::Surface<'a>,
+pub struct State {
+    surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
@@ -21,7 +22,7 @@ pub struct State<'a> {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     num_indices: u32,
-    window: &'a Window,
+    window: Arc<Window>,
     camera: Camera,
     uniform_buffer: wgpu::Buffer,
     uniform: CameraUniform,
@@ -34,12 +35,9 @@ pub struct State<'a> {
     depth_texture: wgpu::Texture,
 }
 
-impl<'a> State<'a> {
-    pub async fn new(window: &'a Window) -> State<'a> {
+impl State {
+    pub  fn new(window: Arc<Window>) -> Self {
         let size = window.inner_size();
-
-        // The instance is a handle to our GPU
-        // BackendBit::PRIMARY => Vulkan + Metal + DX12 + Browser WebGPU
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             #[cfg(not(target_arch = "wasm32"))]
             backends: wgpu::Backends::PRIMARY,
@@ -52,7 +50,7 @@ impl<'a> State<'a> {
         //
         // The surface needs to live as long as the window that created it.
         // State owns the window so this should be safe.
-        let surface = instance.create_surface(window).unwrap();
+        let surface = instance.create_surface(window.clone()).unwrap();
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -60,7 +58,7 @@ impl<'a> State<'a> {
                 compatible_surface: Some(&surface),
                 force_fallback_adapter: false,
             })
-            .await
+            .block_on()
             .unwrap();
 
         let (device, queue) = adapter
@@ -71,16 +69,14 @@ impl<'a> State<'a> {
                     // WebGL doesn't support all of wgpu's features, so if
                     // we're building for the web we'll have to disable some.
                     required_limits: wgpu::Limits::default(),
+                    memory_hints: wgpu::MemoryHints::default(),
                 },
                 None, // Trace path
             )
-            .await
+            .block_on()
             .unwrap();
 
         let surface_caps = surface.get_capabilities(&adapter);
-        // Shader code in this tutorial assumes an Srgb surface texture. Using a different
-        // one will result all the colors comming out darker. If you want to support non
-        // Srgb surfaces, you'll need to account for that when drawing to the frame.
         let surface_format = surface_caps
             .formats
             .iter()
@@ -99,13 +95,13 @@ impl<'a> State<'a> {
         };
 
         let camera = Camera {
-            eye: (0.0, 0.0, 10.0).into(),
+            eye: (0.0, 0.0, 5.0).into(),
             target: (0.0, 0.0, 0.0).into(),
-            up: cgmath::Vector3::unit_y(),
+            up: Vec3::Z,
             aspect: config.width as f32 / config.height as f32,
             fovy: 60.,
             znear: 0.1,
-            zfar: 10000.,
+            zfar: 100.,
         };
         let mut uniform = CameraUniform::new(config.width as f32, config.height as f32);
         uniform.update_view_proj(&camera);
@@ -120,7 +116,7 @@ impl<'a> State<'a> {
         );
         queue.write_buffer(&uniform_buffer, 0, bytemuck::cast_slice(&[uniform]));
 
-        let pointcloud = Pointcloud::from_las("http://localhost:50505/pointclouds/000029-buildings.las").await.unwrap();
+        let pointcloud = Pointcloud::from_las("http://localhost:50505/pointclouds/000029-buildings.las").block_on().unwrap();
         let points = pointcloud.points();
 
         let point_buffer = device.create_buffer(
@@ -131,9 +127,12 @@ impl<'a> State<'a> {
                 mapped_at_creation: false,
             }
         );
-        queue.write_buffer(&point_buffer, 0, bytemuck::cast_slice(&points));
+        queue.write_buffer(&point_buffer, 0, bytemuck::cast_slice(points));
 
-        let intensities = get_intensities(points.len() as usize);
+        println!("{}", points.len());
+        dbg!(points[0]);
+
+        let intensities = get_intensities(points.len());
 
         let intensity_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
@@ -174,7 +173,7 @@ impl<'a> State<'a> {
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders2.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/intensity.wgsl").into()),
         });
 
         let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -204,7 +203,7 @@ impl<'a> State<'a> {
             layout: Some(&render_pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: "vs_main".into(),
                 buffers: &[
                     Vertex::desc(),
                     wgpu::VertexBufferLayout {
@@ -234,7 +233,7 @@ impl<'a> State<'a> {
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: "fs_main".into(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: config.format,
                     blend: Some(wgpu::BlendState {
@@ -250,12 +249,8 @@ impl<'a> State<'a> {
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
                 cull_mode: Some(wgpu::Face::Back),
-                // Setting this to anything other than Fill requires Features::POLYGON_MODE_LINE
-                // or Features::POLYGON_MODE_POINT
                 polygon_mode: wgpu::PolygonMode::Fill,
-                // Requires Features::DEPTH_CLIP_CONTROL
                 unclipped_depth: false,
-                // Requires Features::CONSERVATIVE_RASTERIZATION
                 conservative: false,
             },
             depth_stencil: Some(wgpu::DepthStencilState {
@@ -273,6 +268,7 @@ impl<'a> State<'a> {
             // If the pipeline will be used with a multiview render pass, this
             // indicates how many array layers the attachments will have.
             multiview: None,
+            cache: None,
         });
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -342,7 +338,7 @@ impl<'a> State<'a> {
         }
     }
 
-    #[allow(unused_variables)]
+    #[allow(unused)]
     pub fn input(&mut self, event: &WindowEvent) -> bool {
         false
     }

@@ -9,6 +9,25 @@
 			],
 			"group": "build",
 			"label": "rust: cargo build"
+		},
+		{
+			"command": "wasm-pack",
+			"args": [
+				"build",
+				"--target",
+				"web"
+			],
+			"group": "build",
+			"label": "rust: wasm build"
+		},
+		{
+			"type": "cargo",
+			"command": "run",
+			"problemMatcher": [
+				"$rustc",
+				"$rust-panic"
+			],
+			"label": "rust: cargo run"
 		}
 	]
 }

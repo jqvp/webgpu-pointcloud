@@ -1,4 +1,4 @@
-use ejemplo_wasm_webgpu::run;
+use lib_wasm_webgpu_backend::run;
 
 fn main() {
   pollster::block_on(run());
