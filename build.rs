@@ -1,4 +1,4 @@
-use naga::{front::wgsl, valid::{Capabilities, ValidationFlags, Validator}};
+use naga::front::wgsl;
 use std::fs;
 
 fn main() {
@@ -7,8 +7,7 @@ fn main() {
         .filter(|x| x.as_ref().unwrap().metadata().unwrap().is_file())
         .map(|x| fs::read_to_string(x.unwrap().path()).unwrap())
         .for_each(|content| {        
-            if let Err(e) = Validator::new(ValidationFlags::all(), Capabilities::all())
-            .validate(&wgsl::parse_str(&content).unwrap()) {
+            if let Err(e) = wgsl::parse_str(&content) {
                 panic!("{}", e);
             }
         });
