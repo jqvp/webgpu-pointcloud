@@ -18,6 +18,10 @@ app.get("/", function (request, response) {
   response.sendFile(__dirname + '/index.html');
 });
 
+app.get("/favicon.ico", function (request, response) {
+  response.sendFile(__dirname + '/favicon.ico');
+});
+
 
 // listen for requests :)
 var listener = app.listen(process.env.PORT, function () {
