@@ -345,7 +345,7 @@ impl State {
 
     pub fn update(&mut self) {
         self.frame += 0.001;
-        self.camera.eye = (2. * self.frame.cos(), 0.0, 2. * self.frame.sin()).into();
+        self.camera.eye = (2. * self.frame.cos(), 2. * self.frame.sin(), 0.).into();
         self.uniform.update_view_proj(&self.camera);
         self.queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[self.uniform]));
     }
