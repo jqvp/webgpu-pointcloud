@@ -1,11 +1,11 @@
 [package]
-name = "ejemplo-wasm-webgpu"
+name = "webgpu-pointcloud"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
-name = "lib_wasm_webgpu_backend"
+name = "lib_webgpu_pointcloud"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]

@@ -1,4 +1,4 @@
-use lib_wasm_webgpu_backend::run;
+use lib_webgpu_pointcloud::run;
 
 fn main() {
   pollster::block_on(run());
