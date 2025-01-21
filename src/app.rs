@@ -1,10 +1,7 @@
 use std::sync::Arc;
 use cfg_if::cfg_if;
 use winit::{
-    event::WindowEvent,
-    application::ApplicationHandler,
-    event_loop::ActiveEventLoop,
-    window::{Window, WindowId},
+    application::ApplicationHandler, event::WindowEvent, event_loop::ActiveEventLoop, window::{self, Window, WindowId}
 };
 #[cfg(not(target_arch = "wasm32"))]
 use pollster::FutureExt;
@@ -20,6 +17,7 @@ const HEIGHT: u32 = 500;
 
 pub struct StateApplication {
     state: Option<State>,
+    window: Option<Arc<Window>>,
     #[cfg(target_arch = "wasm32")]
     startup_receiver: Option<Receiver<State>>
 }
@@ -56,10 +54,14 @@ impl ApplicationHandler for StateApplication {
             attributes = attributes.with_canvas(Some(canvas));
         }
         
-        let window = Arc::new(event_loop
+        self.window = Some(Arc::new(event_loop
             .create_window(attributes)
             .expect("Couldn't put title")
-        );
+        ));
+
+        let Some(window) = &self.window else {
+            panic!("Unreachable");
+        };
 
         cfg_if! {
             if #[cfg(target_arch = "wasm32")] {
@@ -69,13 +71,13 @@ impl ApplicationHandler for StateApplication {
                 let (sender, receiver) = futures::channel::oneshot::channel();
                     self.startup_receiver = Some(receiver);
                     wasm_bindgen_futures::spawn_local(async move {
-                        let state = State::new(window).await;
+                        let state = State::new(window.clone()).await;
                         if sender.send(state).is_err() {
                             log::error!("Failed to create and send renderer!");
                         }
                     });
             } else {
-                self.state = Some(State::new(window).block_on());
+                self.state = Some(State::new(window.clone()).block_on());
             }
         }
     }
@@ -95,11 +97,13 @@ impl ApplicationHandler for StateApplication {
             }
         }
 
+        let Some(window) = &self.window else {
+            return;
+        };
         let Some(state) = self.state.as_mut() else {
             return;
         };
 
-        let window = state.window();
         window.request_redraw();
 
         if window.id() == window_id {
