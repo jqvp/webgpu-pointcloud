@@ -18,11 +18,11 @@ glam = "0.29.2"
 las = "0.9.1"
 log = "0.4.21"
 pollster = "0.4.0"
-wgpu = "23.0"
+wgpu = "24.0"
 winit = "0.30"
 
 [build-dependencies]
-naga = { version = "23", features = ["wgsl-in"]}
+naga = { version = "24", features = ["wgsl-in"]}
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 reqwest = { version = "0.12.8", features = ["blocking"]}
@@ -30,7 +30,7 @@ reqwest = { version = "0.12.8", features = ["blocking"]}
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1.6"
 console_log = "1.0"
-wgpu = { version = "23.0", features = ["webgpu"]}
+wgpu = { version = "24.0", features = ["webgpu"]}
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4.30"
 web-sys = { version = "0.3", features = [
