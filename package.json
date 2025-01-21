@@ -4,7 +4,9 @@
   "description": "Server para ver Potree",
   "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "wasm-d": "wasm-pack build --target web --debug",
+    "wasm-r": "wasm-pack build --target web"
   },
   "author": "",
   "license": "ISC",
