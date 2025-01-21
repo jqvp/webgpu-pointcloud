@@ -4,16 +4,10 @@ mod pointcloud;
 mod app;
 
 use winit::event_loop::EventLoop;
-
-use app::StateApplication;
-
-#[allow(unused)]
-const WIDTH: u32 = 500;
-#[allow(unused)]
-const HEIGHT: u32 = 500;
-
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+
+use app::StateApplication;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub async fn run() {

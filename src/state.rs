@@ -1,7 +1,6 @@
 
 use std::{iter, sync::Arc};
 use glam::Vec3;
-use pollster::FutureExt;
 use wgpu::util::DeviceExt;
 use winit::{
     event::*,
@@ -36,13 +35,10 @@ pub struct State {
 }
 
 impl State {
-    pub  fn new(window: Arc<Window>) -> Self {
+    pub async fn new(window: Arc<Window>) -> Self {
         let size = window.inner_size();
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            #[cfg(not(target_arch = "wasm32"))]
             backends: wgpu::Backends::PRIMARY,
-            #[cfg(target_arch = "wasm32")]
-            backends: wgpu::Backends::BROWSER_WEBGPU,
             ..Default::default()
         });
 
@@ -58,7 +54,7 @@ impl State {
                 compatible_surface: Some(&surface),
                 force_fallback_adapter: false,
             })
-            .block_on()
+            .await
             .unwrap();
 
         let (device, queue) = adapter
@@ -73,7 +69,7 @@ impl State {
                 },
                 None, // Trace path
             )
-            .block_on()
+            .await
             .unwrap();
 
         let surface_caps = surface.get_capabilities(&adapter);
@@ -116,7 +112,7 @@ impl State {
         );
         queue.write_buffer(&uniform_buffer, 0, bytemuck::cast_slice(&[uniform]));
 
-        let pointcloud = Pointcloud::from_las("http://localhost:50505/pointclouds/000029-buildings.las").block_on().unwrap();
+        let pointcloud = Pointcloud::from_las("http://localhost:50505/pointclouds/000029-buildings.las").await.unwrap();
         let points = pointcloud.points();
 
         let point_buffer = device.create_buffer(

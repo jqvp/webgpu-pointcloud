@@ -1,4 +1,5 @@
 use std::io::Cursor;
+use glam::Vec3;
 use las::Reader;
 
 #[cfg(target_arch = "wasm32")]
@@ -12,7 +13,7 @@ use crate::points::Vertex;
 
 
 pub struct Pointcloud {
-    points: Vec<Vertex>,
+    points: Vec<Vec3>,
 }
 
 impl Pointcloud {
@@ -43,11 +44,11 @@ impl Pointcloud {
         }}
     }
 
-    pub fn points(&self) -> &[Vertex] {
+    pub fn points(&self) -> &[Vec3] {
         &self.points
     }
 
-    fn read_points(mut reader: Reader) -> Vec<Vertex> {
+    fn read_points(mut reader: Reader) -> Vec<Vec3> {
         let mut points = Vec::new();
 
         let x_half = (reader.header().bounds().max.x - reader.header().bounds().min.x) * 0.5;

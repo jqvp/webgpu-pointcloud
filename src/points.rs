@@ -1,15 +1,12 @@
 use std::f32::consts::PI;
 use fastrand::*;
 use glam::{Vec3, Mat4};
-use las::Vector;
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
     position: [f32; 3],
 }
-unsafe impl bytemuck::Pod for Vertex {}
-unsafe impl bytemuck::Zeroable for Vertex {}
 
 impl Vertex {
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
@@ -26,24 +23,18 @@ impl Vertex {
         }
     }
 
-    pub fn new(x: f32, y: f32, z: f32) -> Vertex {
-        Vertex { position: [x, y, z]}
+    pub fn new(x: f32, y: f32, z: f32) -> Vec3 {
+        Vec3::new(x, y, z)
     }
 }
 
-impl From<las::Vector<f32>> for Vertex {
-    fn from(vector: Vector<f32>) -> Self {
-        Vertex::new(vector.x, vector.y, vector.z)
-    }
-}
-
-pub const SQUARE: &[Vertex] = &[
-    Vertex { position: [-0.5, -0.5, 0.,]},
-    Vertex { position: [0.5, -0.5, 0.,]},
-    Vertex { position: [-0.5, 0.5, 0.,]},
-    Vertex { position: [-0.5, 0.5, 0.,]},
-    Vertex { position: [0.5, -0.5, 0.,]},
-    Vertex { position: [0.5, 0.5, 0.,]},
+pub const SQUARE: &[Vec3] = &[
+    Vec3::new(-0.5, -0.5, 0.,),
+    Vec3::new(0.5, -0.5, 0.,),
+    Vec3::new(-0.5, 0.5, 0.,),
+    Vec3::new(-0.5, 0.5, 0.,),
+    Vec3::new(0.5, -0.5, 0.,),
+    Vec3::new(0.5, 0.5, 0.,),
 ];
 
 pub fn get_intensities(quantity: usize) -> Vec<f32> {
@@ -82,7 +73,7 @@ impl Camera {
 // We need this for Rust to store our data correctly for the shaders
 #[repr(C)]
 // This is so we can store this in a buffer
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CameraUniform {
     pub time: f32,
     pub width: f32,
@@ -91,8 +82,6 @@ pub struct CameraUniform {
     model: Mat4,
     view_proj: Mat4,
 }
-unsafe impl bytemuck::Pod for CameraUniform {}
-unsafe impl bytemuck::Zeroable for CameraUniform {}
 
 impl CameraUniform {
     pub fn new(width: f32, height: f32) -> Self {

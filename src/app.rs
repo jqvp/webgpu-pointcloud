@@ -1,53 +1,83 @@
 use std::sync::Arc;
+use cfg_if::cfg_if;
 use winit::{
     event::WindowEvent,
     application::ApplicationHandler,
     event_loop::ActiveEventLoop,
     window::{Window, WindowId},
 };
+#[cfg(not(target_arch = "wasm32"))]
+use pollster::FutureExt;
+#[cfg(target_arch = "wasm32")]
+use futures::channel::oneshot::Receiver;
 
+use crate::state::State;
 
-use crate::state::*;
+#[allow(unused)]
+const WIDTH: u32 = 500;
+#[allow(unused)]
+const HEIGHT: u32 = 500;
 
 pub struct StateApplication {
     state: Option<State>,
+    #[cfg(target_arch = "wasm32")]
+    startup_receiver: Option<Receiver<State>>
 }
 
 impl StateApplication {
     pub fn new() -> Self {
-        Self { state: None }
+        Self { 
+            state: None,
+            #[cfg(target_arch = "wasm32")]
+            startup_receiver: None
+        }
     }
 }
 
 impl ApplicationHandler for StateApplication {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let window = Arc::new(event_loop
-            .create_window(Window::default_attributes()
-                .with_title("Pointcloud Viewer"))
-                .unwrap()
-            );
+        let mut attributes = Window::default_attributes()
+            .with_title("Pointcloud Viewer");
 
         #[cfg(target_arch = "wasm32")] {
-            use winit::dpi::PhysicalSize;
-            use winit::platform::web::WindowExtWebSys;
+            use winit::platform::web::WindowAttributesExtWebSys;
+            use wasm_bindgen::JsCast;
 
-            let _ = window.request_inner_size(PhysicalSize::new(WIDTH, HEIGHT));
-
-            web_sys::window()
-                .and_then(|win| win.document())
-                .and_then(|doc| {
-                    let dst = doc.get_element_by_id("body")?;
-                    let canvas = window.canvas()?;
-                    canvas.set_height(HEIGHT);
-                    canvas.set_width(WIDTH);
-                    let canvas2 = web_sys::Element::from(canvas);
-                    dst.append_child(&canvas2).ok()?;
-                    Some(())
-                })
-                .expect("Couldn't append canvas to document body.");
+            let canvas = wgpu::web_sys::window()
+                .unwrap()
+                .document()
+                .unwrap()
+                .get_element_by_id("canvas")
+                .unwrap()
+                .dyn_into::<wgpu::web_sys::HtmlCanvasElement>()
+                .unwrap();
+            canvas.set_height(HEIGHT);
+            canvas.set_width(WIDTH);
+            attributes = attributes.with_canvas(Some(canvas));
         }
+        
+        let window = Arc::new(event_loop
+            .create_window(attributes)
+            .expect("Couldn't put title")
+        );
 
-        self.state = Some(State::new(window));
+        cfg_if! {
+            if #[cfg(target_arch = "wasm32")] {
+                use winit::dpi::PhysicalSize;
+                let _ = window.request_inner_size(PhysicalSize::new(WIDTH, HEIGHT));
+
+                let (sender, receiver) = futures::channel::oneshot::channel();
+                    self.startup_receiver = Some(receiver);
+                    wasm_bindgen_futures::spawn_local(async move {
+                        let state = State::new(window).await;
+                        if sender.send(state).is_err() {
+                            log::error!("Failed to create and send renderer!");
+                        }
+                    });
+            } else {
+                self.state = Some(State::new(window).block_on());
+            }
+        }
     }
 
     fn window_event(
@@ -56,7 +86,21 @@ impl ApplicationHandler for StateApplication {
         window_id: WindowId,
         event: WindowEvent,
     ) {
-        let window = self.state.as_ref().unwrap().window();
+        #[cfg(target_arch = "wasm32")] {  
+            if let Some(receiver) = self.startup_receiver.as_mut() {
+                if let Ok(Some(state)) = receiver.try_recv() {
+                    self.state = Some(state);
+                    self.startup_receiver = None;
+                }
+            }
+        }
+
+        let Some(state) = self.state.as_mut() else {
+            return;
+        };
+
+        let window = state.window();
+        window.request_redraw();
 
         if window.id() == window_id {
             match event {
@@ -64,19 +108,16 @@ impl ApplicationHandler for StateApplication {
                     event_loop.exit();
                 }
                 WindowEvent::Resized(physical_size) => {
-                    self.state.as_mut().unwrap().resize(physical_size);
+                    state.resize(physical_size);
                 }
                 WindowEvent::RedrawRequested => {
-                    self.state.as_mut().unwrap().update();
-                    self.state.as_mut().unwrap().render().expect("Render ERROR!");
+                    state.update();
+                    state.render().expect("Render ERROR!");
                 }
                 _ => {}
             }
         }
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        let window = self.state.as_ref().unwrap().window();
-        window.request_redraw();
-    }
+
 }
