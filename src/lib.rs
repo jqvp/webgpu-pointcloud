@@ -3,11 +3,11 @@ mod state;
 mod pointcloud;
 mod app;
 
+use app::App;
 use winit::event_loop::EventLoop;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-use app::StateApplication;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub async fn run() {
@@ -23,6 +23,15 @@ pub async fn run() {
     let event_loop = EventLoop::new().unwrap();
 
     // State::new uses async code, so we're going to wait for it to finish
-    let mut window_state = StateApplication::new();
-    let _ = event_loop.run_app(&mut window_state);
+
+    let mut app = App::new();
+
+    #[cfg(target_arch = "wasm32")]{
+        use winit::platform::web::EventLoopExtWebSys;
+        app.make_state(&event_loop).await;
+        let _ = event_loop.spawn_app(app);    
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = event_loop.run_app(&mut app);
 }

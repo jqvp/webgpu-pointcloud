@@ -12,18 +12,18 @@ crate-type = ["cdylib", "rlib"]
 bytemuck = { version = "1", features = ["derive"]}
 cfg-if = "1"
 fastrand = "2.1"
-glam = { version = "0.29",  features = ["bytemuck"]}
+glam = { version = "0.30",  features = ["bytemuck"]}
 las = "0.9"
 log = "0.4"
-wgpu = "24"
+wgpu = "25"
 winit = "0.30"
 
 [build-dependencies]
-naga = { version = "24", features = ["wgsl-in"]}
+naga = { version = "25", features = ["wgsl-in"]}
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-pollster = "0.4"
 env_logger = "0.11"
+pollster = "0.4"
 reqwest = { version = "0.12", features = ["blocking"]}
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

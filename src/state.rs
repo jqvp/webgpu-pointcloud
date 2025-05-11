@@ -43,7 +43,6 @@ impl State {
         });
 
         // # Safety
-        //
         // The surface needs to live as long as the window that created it.
         // State owns the window so this should be safe.
         let surface = instance.create_surface(window.clone()).unwrap();
@@ -61,13 +60,13 @@ impl State {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
+                    trace: wgpu::Trace::Off, // Trace path
                     required_features: wgpu::Features::empty(),
                     // WebGL doesn't support all of wgpu's features, so if
                     // we're building for the web we'll have to disable some.
                     required_limits: wgpu::Limits::default(),
                     memory_hints: wgpu::MemoryHints::default(),
                 },
-                None, // Trace path
             )
             .await
             .unwrap();
@@ -124,9 +123,6 @@ impl State {
             }
         );
         queue.write_buffer(&point_buffer, 0, bytemuck::cast_slice(points));
-
-        println!("{}", points.len());
-        dbg!(points[0]);
 
         let intensities = get_intensities(points.len());
 

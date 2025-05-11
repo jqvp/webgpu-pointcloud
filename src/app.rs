@@ -1,12 +1,11 @@
 use std::sync::Arc;
-use cfg_if::cfg_if;
 use winit::{
-    application::ApplicationHandler, event::WindowEvent, event_loop::ActiveEventLoop, window::{self, Window, WindowId}
+    application::ApplicationHandler, event::WindowEvent, event_loop::ActiveEventLoop, window::{Window, WindowId}
 };
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 use pollster::FutureExt;
-#[cfg(target_arch = "wasm32")]
-use futures::channel::oneshot::Receiver;
+#[cfg(target_family = "wasm")]
+use winit::event_loop::EventLoop;
 
 use crate::state::State;
 
@@ -15,70 +14,60 @@ const WIDTH: u32 = 500;
 #[allow(unused)]
 const HEIGHT: u32 = 500;
 
-pub struct StateApplication {
+pub struct App {
     state: Option<State>,
-    window: Option<Arc<Window>>,
-    #[cfg(target_arch = "wasm32")]
-    startup_receiver: Option<Receiver<State>>
 }
 
-impl StateApplication {
-    pub fn new() -> Self {
+impl App {
+    pub const fn new() -> Self {
         Self { 
             state: None,
-            #[cfg(target_arch = "wasm32")]
-            startup_receiver: None
         }
     }
 }
 
-impl ApplicationHandler for StateApplication {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let mut attributes = Window::default_attributes()
+impl App {
+    pub async fn make_state(
+        &mut self,
+        #[cfg(target_family = "wasm")]
+        event_loop: &EventLoop<()>,
+        #[cfg(not(target_family = "wasm"))]
+        event_loop: &ActiveEventLoop,
+    ) {
+        let attributes = Window::default_attributes()
             .with_title("Pointcloud Viewer");
 
-        #[cfg(target_arch = "wasm32")] {
-            use winit::platform::web::WindowAttributesExtWebSys;
-            use wasm_bindgen::JsCast;
-
-            let canvas = wgpu::web_sys::window()
-                .unwrap()
-                .document()
-                .unwrap()
-                .get_element_by_id("canvas")
-                .unwrap()
-                .dyn_into::<wgpu::web_sys::HtmlCanvasElement>()
-                .unwrap();
-            canvas.set_height(HEIGHT);
-            canvas.set_width(WIDTH);
-            attributes = attributes.with_canvas(Some(canvas));
-        }
-        
-        self.window = Some(Arc::new(event_loop
+        let window = event_loop
             .create_window(attributes)
-            .expect("Couldn't put title")
-        ));
+            .expect("Couldn't create window");
 
-        let Some(window) = &self.window else {
-            panic!("Unreachable");
-        };
+        #[cfg(target_arch = "wasm32")] {
+            use winit::dpi::PhysicalSize;
+            let _ = window.request_inner_size(PhysicalSize::new(WIDTH, HEIGHT));
 
-        cfg_if! {
-            if #[cfg(target_arch = "wasm32")] {
-                use winit::dpi::PhysicalSize;
-                let _ = window.request_inner_size(PhysicalSize::new(WIDTH, HEIGHT));
+            use winit::platform::web::WindowExtWebSys;
+            web_sys::window()
+                .and_then(|win| win.document())
+                .and_then(|doc| {
+                    let dst = doc.get_element_by_id("body")?;
+                    let canvas = web_sys::HtmlCanvasElement::from(window.canvas()?);
+                    canvas.set_height(HEIGHT);
+                    canvas.set_width(WIDTH);
+                    dst.append_child(&canvas).ok()?;
+                    Some(())
+                })
+                .expect("Couldn't append canvas to document body.");
+        }
 
-                let (sender, receiver) = futures::channel::oneshot::channel();
-                    self.startup_receiver = Some(receiver);
-                    wasm_bindgen_futures::spawn_local(async move {
-                        let state = State::new(window.clone()).await;
-                        if sender.send(state).is_err() {
-                            log::error!("Failed to create and send renderer!");
-                        }
-                    });
-            } else {
-                self.state = Some(State::new(window.clone()).block_on());
-            }
+        self.state = Some((State::new(Arc::new(window))).await);
+    }
+}
+
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        #[cfg(not(target_family = "wasm"))]
+        if self.state.is_none() { // Assume there is no window if we haven't made a State already
+            self.make_state(event_loop).block_on();
         }
     }
 
@@ -88,25 +77,11 @@ impl ApplicationHandler for StateApplication {
         window_id: WindowId,
         event: WindowEvent,
     ) {
-        #[cfg(target_arch = "wasm32")] {  
-            if let Some(receiver) = self.startup_receiver.as_mut() {
-                if let Ok(Some(state)) = receiver.try_recv() {
-                    self.state = Some(state);
-                    self.startup_receiver = None;
-                }
-            }
-        }
+        let state = self.state.as_mut().unwrap();
 
-        let Some(window) = &self.window else {
-            return;
-        };
-        let Some(state) = self.state.as_mut() else {
-            return;
-        };
+        state.window().request_redraw();
 
-        window.request_redraw();
-
-        if window.id() == window_id {
+        if state.window().id() == window_id {
             match event {
                 WindowEvent::CloseRequested => {
                     event_loop.exit();
