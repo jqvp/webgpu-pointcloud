@@ -7,7 +7,7 @@ use pollster::FutureExt;
 #[cfg(target_family = "wasm")]
 use winit::event_loop::EventLoop;
 
-use crate::state::State;
+use crate::engine::Engine;
 
 #[allow(unused)]
 const WIDTH: u32 = 500;
@@ -15,7 +15,7 @@ const WIDTH: u32 = 500;
 const HEIGHT: u32 = 500;
 
 pub struct App {
-    state: Option<State>,
+    state: Option<Engine>,
 }
 
 impl App {
@@ -59,7 +59,7 @@ impl App {
                 .expect("Couldn't append canvas to document body.");
         }
 
-        self.state = Some((State::new(Arc::new(window))).await);
+        self.state = Some((Engine::new(Arc::new(window))).await);
     }
 }
 

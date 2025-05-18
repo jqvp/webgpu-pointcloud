@@ -1,26 +1,21 @@
 
 use std::{iter, sync::Arc};
 use glam::Vec3;
-use wgpu::util::DeviceExt;
 use winit::{
     event::*,
     window::Window,
 };
 
-use crate::{pointcloud::Pointcloud, points::*};
+use crate::{pointcloud::Pointcloud, engine::*, points::*};
 
-const INDICES: &[u16] = &[0, 1, 2, 3, 4, 5];
 
-pub struct State {
+pub struct Engine {
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     pub size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
-    num_indices: u32,
     window: Arc<Window>,
     camera: Camera,
     uniform_buffer: wgpu::Buffer,
@@ -34,7 +29,7 @@ pub struct State {
     depth_texture: wgpu::Texture,
 }
 
-impl State {
+impl Engine {
     pub async fn new(window: Arc<Window>) -> Self {
         let size = window.inner_size();
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -165,7 +160,7 @@ impl State {
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/intensity.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/intensity.wgsl").into()),
         });
 
         let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -197,11 +192,10 @@ impl State {
                 module: &shader,
                 entry_point: "vs_main".into(),
                 buffers: &[
-                    Vertex::desc(),
                     wgpu::VertexBufferLayout {
                         attributes: &[
                             wgpu::VertexAttribute {
-                                shader_location: 1,
+                                shader_location: 0,
                                 offset: 0,
                                 format: wgpu::VertexFormat::Float32x3,
                             }
@@ -212,7 +206,7 @@ impl State {
                     wgpu::VertexBufferLayout {
                         attributes: &[
                             wgpu::VertexAttribute {
-                                shader_location: 2,
+                                shader_location: 1,
                                 offset: 0,
                                 format: wgpu::VertexFormat::Float32,
                             }
@@ -237,7 +231,7 @@ impl State {
                 compilation_options: Default::default(),
             }),
             primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
                 cull_mode: Some(wgpu::Face::Back),
@@ -263,18 +257,6 @@ impl State {
             cache: None,
         });
 
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(SQUARE),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(INDICES),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-        let num_indices = INDICES.len() as u32;
-
         Self {
             surface,
             device,
@@ -282,9 +264,6 @@ impl State {
             config,
             size,
             render_pipeline,
-            vertex_buffer,
-            index_buffer,
-            num_indices,
             window,
             uniform_buffer,
             uniform,
@@ -342,7 +321,7 @@ impl State {
         self.queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[self.uniform]));
     }
 
-    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(&self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
         let view = output
             .texture
@@ -383,12 +362,10 @@ impl State {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.set_vertex_buffer(1, self.point_buffer.slice(..));
-            render_pass.set_vertex_buffer(2, self.intensity_buffer.slice(..));
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.set_vertex_buffer(0, self.point_buffer.slice(..));
+            render_pass.set_vertex_buffer(1, self.intensity_buffer.slice(..));
             render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..self.pointcloud.points().len() as u32);
+            render_pass.draw(0..4, 0..self.pointcloud.points().len() as u32);
         }
 
         self.queue.submit(iter::once(encoder.finish()));

@@ -1,6 +1,13 @@
+const square = array(
+    vec2f(-0.5, -0.5),
+    vec2f(0.5, -0.5),
+    vec2f(-0.5, 0.5),
+    vec2f(0.5, 0.5),
+);
 const pi = 3.14159265359;
 override circleEnabled = true;
-fn hslToRgb(hsl: vec3f) -> vec3f {
+
+fn hsl_to_rgb(hsl: vec3f) -> vec3f {
   var rgb: vec3f;
 
   if hsl.y == 0. {
@@ -13,27 +20,27 @@ fn hslToRgb(hsl: vec3f) -> vec3f {
       q = hsl.z + hsl.y - hsl.z * hsl.y;
     }
     let p = 2. * hsl.z - q;
-    rgb.r = hueToRgb(p, q, hsl.x + 1./3);
-    rgb.g = hueToRgb(p, q, hsl.x);
-    rgb.b = hueToRgb(p, q, hsl.x - 1./3);
+    rgb.r = hue_to_rgb(p, q, hsl.x + 1./3);
+    rgb.g = hue_to_rgb(p, q, hsl.x);
+    rgb.b = hue_to_rgb(p, q, hsl.x - 1./3);
   }
   return rgb;
 }
-fn hueToRgb(p: f32, q: f32, t: f32) -> f32 {
+fn hue_to_rgb(p: f32, q: f32, t: f32) -> f32 {
   var t2 = fract(t);
   if t2 < 1./6 {return p + (q - p) * 6. * t2;}
   if t2 < 1./2 {return q;}
   if t2 < 2./3 {return p + (q - p) * (2./3 - t2) * 6.;}
   return p;
 }
-fn toFragmentCoords(x: f32, y: f32) -> vec2f {
+fn to_fragment_coords(x: f32, y: f32) -> vec2f {
   return vec2f((x+1) * 0.5 * unif.width, (-y+1) * 0.5 * unif.height);
 }
 
 struct VertexIn {
-  @location(0) vert: vec3f,
-  @location(1) point: vec3f,
-  @location(2) intensity: f32,
+  @location(0) point: vec3f,
+  @location(1) intensity: f32,
+  @builtin(vertex_index) index: u32,
 };
 struct VertexOut {
   @builtin(position) position: vec4f,
@@ -57,9 +64,9 @@ struct Uniforms {
 @vertex fn vs_main(in: VertexIn) -> VertexOut {
   var point = unif.view_matrix * unif.model_matrix * vec4f(in.point, 1);
   point = point/point.w;
-  let vert = point + vec4f(in.vert.x * unif.pixels / unif.width * 2, in.vert.y * unif.pixels / unif.height * 2, 0, 0);
+  let vert = point + vec4f(square[in.index] / vec2f(unif.width, unif.height) * unif.pixels * 2, 0, 0);
 
-  return VertexOut(vert, toFragmentCoords(point.x, point.y), in.intensity);
+  return VertexOut(vert, to_fragment_coords(point.x, point.y), in.intensity);
 } 
 
 @fragment fn fs_main(in: VertexOut) -> FragOut {
@@ -67,7 +74,7 @@ struct Uniforms {
     discard;
   }
 
-  let color = hslToRgb(vec3f(
+  let color = hsl_to_rgb(vec3f(
     in.intensity,
     1,
     0.5));
