@@ -29,7 +29,7 @@ jobs:
       - name: Manage environment      
         env:
           GH_TOKEN: ${{ github.token }}
-        run: 
+        run: |
           url=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq '.html_url')
           echo "POINTCLOUD_URL=$url/pointcloud/000029-buildings.las" > .env
           echo $url
