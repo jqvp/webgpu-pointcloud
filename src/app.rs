@@ -92,7 +92,10 @@ impl ApplicationHandler for App {
                 WindowEvent::RedrawRequested => {
                     state.update();
                     state.render().expect("Render ERROR!");
-                }
+                },
+                WindowEvent::KeyboardInput {..} => {
+                    state.input(&event);
+                },
                 _ => {}
             }
         }

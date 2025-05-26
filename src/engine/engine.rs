@@ -6,7 +6,8 @@ use winit::{
     window::Window,
 };
 
-use crate::{pointcloud::Pointcloud, engine::*, points::*};
+use super::{input::CameraController, *};
+use crate::pointcloud::Pointcloud;
 
 
 pub struct Engine {
@@ -18,13 +19,10 @@ pub struct Engine {
     render_pipeline: wgpu::RenderPipeline,
     window: Arc<Window>,
     camera: Camera,
-    uniform_buffer: wgpu::Buffer,
-    uniform: CameraUniform,
-    uniform_bind_group: wgpu::BindGroup,
-    point_buffer: wgpu::Buffer,
+    camera_controller: CameraController,
+    uniform: Uniform,
     pointcloud: Pointcloud,
     frame: f32,
-    intensity_buffer: wgpu::Buffer,
     depth_view: wgpu::TextureView,
     depth_texture: wgpu::Texture,
 }
@@ -93,43 +91,6 @@ impl Engine {
             znear: 0.1,
             zfar: 100.,
         };
-        let mut uniform = CameraUniform::new(config.width as f32, config.height as f32);
-        uniform.update_view_proj(&camera);
-
-        let uniform_buffer = device.create_buffer(
-            &wgpu::BufferDescriptor {
-                label: Some("Uniform Buffer"),
-                size: (std::mem::size_of::<CameraUniform>()) as u64,
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }
-        );
-        queue.write_buffer(&uniform_buffer, 0, bytemuck::cast_slice(&[uniform]));
-
-        let pointcloud = Pointcloud::from_las("http://localhost:50505/pointclouds/000029-buildings.las").await.unwrap();
-        let points = pointcloud.points();
-
-        let point_buffer = device.create_buffer(
-            &wgpu::BufferDescriptor {
-                label: Some("Point Buffer"),
-                size: (points.len()*12) as u64,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }
-        );
-        queue.write_buffer(&point_buffer, 0, bytemuck::cast_slice(points));
-
-        let intensities = get_intensities(points.len());
-
-        let intensity_buffer = device.create_buffer(
-            &wgpu::BufferDescriptor {
-                label: Some("Intensity Buffer"),
-                size: (intensities.len()*4) as u64,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }
-        );
-        queue.write_buffer(&intensity_buffer, 0, bytemuck::cast_slice(&intensities));
 
         let uniform_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
@@ -146,17 +107,15 @@ impl Engine {
             ],
             label: Some("uniform_bind_group_layout"),
         });
+        let uniform = Uniform::new(&queue, &device, &uniform_bind_group_layout, &camera, config.width, config.height);
 
-        let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &uniform_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: uniform_buffer.as_entire_binding(),
-                }
-            ],
-            label: Some("uniform_bind_group"),
-        });
+        let camera_controller = CameraController::new(1.);
+
+        let pointcloud = Pointcloud::from_las(
+            "http://localhost:50505/pointclouds/000029-buildings.las",
+                &device,
+                &queue
+        ).await.unwrap();
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
@@ -265,14 +224,11 @@ impl Engine {
             size,
             render_pipeline,
             window,
-            uniform_buffer,
             uniform,
-            uniform_bind_group,
             camera,
+            camera_controller,
             pointcloud,
-            point_buffer,
             frame: 0.,
-            intensity_buffer,
             depth_view,
             depth_texture,
         }
@@ -304,21 +260,20 @@ impl Engine {
                 view_formats: &[wgpu::TextureFormat::Depth32Float],
             });
             self.depth_view = self.depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
-            self.uniform.width = self.config.width as f32;
-            self.uniform.height = self.config.height as f32;
+            self.uniform.camera_uniform.width = self.config.width as f32;
+            self.uniform.camera_uniform.height = self.config.height as f32;
         }
     }
 
-    #[allow(unused)]
     pub fn input(&mut self, event: &WindowEvent) -> bool {
-        false
+        self.camera_controller.process_events(event)
     }
 
     pub fn update(&mut self) {
         self.frame += 0.001;
         self.camera.eye = (2. * self.frame.cos(), 2. * self.frame.sin(), 0.).into();
-        self.uniform.update_view_proj(&self.camera);
-        self.queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[self.uniform]));
+        self.uniform.update(&self.camera, &self.queue);
+        self.camera_controller.update_camera(&mut self.camera);
     }
 
     pub fn render(&self) -> Result<(), wgpu::SurfaceError> {
@@ -362,10 +317,8 @@ impl Engine {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_vertex_buffer(0, self.point_buffer.slice(..));
-            render_pass.set_vertex_buffer(1, self.intensity_buffer.slice(..));
-            render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-            render_pass.draw(0..4, 0..self.pointcloud.points().len() as u32);
+            self.uniform.record_command(&mut render_pass);
+            self.pointcloud.record_command(&mut render_pass);
         }
 
         self.queue.submit(iter::once(encoder.finish()));
