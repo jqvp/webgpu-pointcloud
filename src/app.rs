@@ -37,6 +37,7 @@ impl App {
         let attributes = Window::default_attributes()
             .with_title("Pointcloud Viewer");
 
+        #[allow(deprecated)]
         let window = event_loop
             .create_window(attributes)
             .expect("Couldn't create window");
@@ -64,6 +65,7 @@ impl App {
 }
 
 impl ApplicationHandler for App {
+    #[allow(unused_variables)] // For wasm
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         #[cfg(not(target_family = "wasm"))]
         if self.state.is_none() { // Assume there is no window if we haven't made a State already

@@ -1,4 +1,4 @@
-use winit::{event::{ElementState, KeyEvent, WindowEvent}, keyboard::{KeyCode, PhysicalKey}};
+use winit::{event::{ElementState, KeyEvent}, keyboard::{KeyCode, PhysicalKey}};
 
 use super::Camera;
 

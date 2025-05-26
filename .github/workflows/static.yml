@@ -36,7 +36,7 @@ jobs:
 
       - name: Build
         run: wasm-pack build --target web
-      - run: rm -rf target
+      - run: rm -rf target src .vscode .cargo .github
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
