@@ -22,7 +22,7 @@ pub fn make_random_points(quantity: usize) -> Vec<Vec3> {
             rng.f32(),
             rng.f32(),
             rng.f32(),
-        ));
+        ) - Vec3{x: 0.5, y: 0.5, z: 0.5});
     }
 
     points

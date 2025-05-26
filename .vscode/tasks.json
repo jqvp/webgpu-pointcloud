@@ -28,6 +28,17 @@
 				"$rust-panic"
 			],
 			"label": "rust: cargo run"
+		},
+		{
+			"command": "wasm-debug",
+			"args": [
+			"build",
+			"--target",
+			"web",
+			"--debug"
+			],
+			"group": "build",
+			"label": "rust: wasm debug build"
 		}
 	]
 }
