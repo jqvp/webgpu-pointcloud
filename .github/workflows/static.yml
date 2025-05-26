@@ -26,8 +26,10 @@ jobs:
         
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-      - run: echo "POINTCLOUD_URL=${{ steps.deployment.outputs.page_url }}/pointcloud/000029-buildings.las" > .env
-      - run: cat .env
+      - run: 
+          url=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq '.html_url')
+          echo "POINTCLOUD_URL=$url/pointcloud/000029-buildings.las" > .env
+          echo $url
 
       - name: Build
         run: wasm-pack build --target web
