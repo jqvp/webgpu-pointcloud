@@ -29,7 +29,7 @@ jobs:
       - run: echo "POINTCLOUD_URL=https://$url/pointcloud/000029-buildings.las" > .env
       
       - name: Build
-        run: wasm-pack build --headless --target web
+        run: wasm-pack build --target web
         
       - name: Setup Pages
         uses: actions/configure-pages@v5
