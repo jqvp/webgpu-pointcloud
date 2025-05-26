@@ -27,10 +27,12 @@ jobs:
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
       - run: echo "POINTCLOUD_URL=https://$url/pointcloud/000029-buildings.las" > .env
-      
+      - run: cat .env
+
       - name: Build
         run: wasm-pack build --target web
-        
+      - run: rm -rf target
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
