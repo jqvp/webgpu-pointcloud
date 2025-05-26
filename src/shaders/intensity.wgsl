@@ -74,9 +74,10 @@ struct Uniforms {
     discard;
   }
 
-  let color = hsl_to_rgb(vec3f(
-    in.intensity,
-    1,
-    0.5));
-  return FragOut(vec4f(color, 1));
+  //let color = hsl_to_rgb(vec3f(
+  //  in.intensity,
+  //  1,
+  //  0.5));
+
+  return FragOut(vec4f(vec3((in.intensity-36.)/4342.), 1)); // rango obtenido a mano WIP
 }

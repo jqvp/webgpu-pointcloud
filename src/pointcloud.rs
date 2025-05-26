@@ -42,7 +42,7 @@ impl Pointcloud {
         };
 
         let len = bytes.len();
-        let (points, intensities) = Pointcloud::read_points(Reader::new(Cursor::new(bytes)).unwrap(), len);
+        let (points, intensities) = Pointcloud::read_las(Reader::new(Cursor::new(bytes)).unwrap(), len);
 
         let point_buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
@@ -76,7 +76,7 @@ impl Pointcloud {
         &self.points
     }
 
-    fn read_points(mut reader: Reader, len: usize) -> (Vec<Vec3>, Vec<f32>) {
+    fn read_las(mut reader: Reader, len: usize) -> (Vec<Vec3>, Vec<f32>) {
         let mut points = Vec::with_capacity(len);
         let mut intensities = Vec::with_capacity(len);
 
@@ -93,9 +93,10 @@ impl Pointcloud {
                 ((point.y- min.y - y_half) * transforms.y.scale) as f32,
                 ((point.z- min.z - z_half) * transforms.z.scale) as f32,
             ));
-            intensities.push(point.intensity as f32 / 65535.);
+            
+            intensities.push(point.intensity as f32);
         }
-        
+
         (points, intensities)
     }
 

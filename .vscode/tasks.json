@@ -30,7 +30,7 @@
 			"label": "rust: cargo run"
 		},
 		{
-			"command": "wasm-debug",
+			"command": "wasm-pack",
 			"args": [
 			"build",
 			"--target",

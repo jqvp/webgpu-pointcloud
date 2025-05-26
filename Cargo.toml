@@ -10,8 +10,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 bytemuck = { version = "1", features = ["derive"]}
-cfg-if = "1"
-dotenv_codegen = "0.15.0"
+dotenvy_macro = "0.15"
 fastrand = "2.1"
 glam = { version = "0.30",  features = ["bytemuck"]}
 las = "0.9"
