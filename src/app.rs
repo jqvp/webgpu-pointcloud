@@ -93,7 +93,7 @@ impl ApplicationHandler for App {
                     state.update();
                     state.render().expect("Render ERROR!");
                 },
-                WindowEvent::KeyboardInput {..} => {
+                WindowEvent::KeyboardInput { event, ..} => {
                     state.input(&event);
                 },
                 _ => {}

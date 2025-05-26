@@ -20,7 +20,7 @@ pub struct Pointcloud {
 }
 
 impl Pointcloud {
-    pub async fn from_las(url: &str, device: &wgpu::Device, queue: &wgpu::Queue) -> Result<Pointcloud, Box<dyn std::error::Error>> {
+    pub async fn from_las(device: &wgpu::Device, queue: &wgpu::Queue, url: &str) -> Result<Pointcloud, Box<dyn std::error::Error>> {
         #[cfg(not(target_family = "wasm"))]
         let bytes = {
             reqwest::blocking::get(url)?.bytes()?

@@ -1,5 +1,6 @@
 
 use std::{iter, sync::Arc};
+use dotenv_codegen::dotenv;
 use glam::Vec3;
 use winit::{
     event::*,
@@ -83,7 +84,7 @@ impl Engine {
         };
 
         let camera = Camera {
-            eye: (0.0, 0.0, 5.0).into(),
+            eye: (2., 2., 0.).into(),
             target: (0.0, 0.0, 0.0).into(),
             up: Vec3::Z,
             aspect: config.width as f32 / config.height as f32,
@@ -112,9 +113,9 @@ impl Engine {
         let camera_controller = CameraController::new(1.);
 
         let pointcloud = Pointcloud::from_las(
-            "http://localhost:50505/pointclouds/000029-buildings.las",
-                &device,
-                &queue
+            &device,
+            &queue,
+            dotenv!("POINTCLOUD_URL"),
         ).await.unwrap();
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -265,15 +266,15 @@ impl Engine {
         }
     }
 
-    pub fn input(&mut self, event: &WindowEvent) -> bool {
+    pub fn input(&mut self, event: &KeyEvent) -> bool {
         self.camera_controller.process_events(event)
     }
 
     pub fn update(&mut self) {
         self.frame += 0.001;
-        self.camera.eye = (2. * self.frame.cos(), 2. * self.frame.sin(), 0.).into();
-        self.uniform.update(&self.camera, &self.queue);
+        //self.camera.eye = (2., 2., 0.).into();
         self.camera_controller.update_camera(&mut self.camera);
+        self.uniform.update(&self.camera, &self.queue);
     }
 
     pub fn render(&self) -> Result<(), wgpu::SurfaceError> {
