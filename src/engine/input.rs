@@ -1,3 +1,4 @@
+use glam::{Mat2, Vec2, Vec3, Vec3Swizzles};
 use winit::{event::{DeviceEvent, ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent}, keyboard::{KeyCode, PhysicalKey}};
 
 use super::Camera;
@@ -62,7 +63,7 @@ pub struct CameraController {
     pub angular_speed: f32, // rads
     pub zoom_speed: f32, // fraction
     theta: f32, // verticality
-    phi: f32, // XY plane
+    phi: f32, // XY plane, 0 means looking towards (-1, 0)
     farness: f32, // meters
     forward_pressed: bool,
     backward_pressed: bool,
@@ -90,17 +91,21 @@ impl CameraController {
         let mut looking_at = camera.target - camera.eye;
         looking_at.z = 0.; // UP = 0
 
-        let move_to = looking_at * (Into::<f32>::into(self.forward_pressed) - Into::<f32>::into(self.backward_pressed))
-            + looking_at.cross(glam::Vec3::Z) * (Into::<f32>::into(self.left_pressed) - Into::<f32>::into(self.right_pressed));
-        let norm = move_to.normalize();
-        
-        let move_to = if norm.is_nan() { move_to } else { norm * self.speed }; // cross should be fine because they're orthogonal
-        camera.target += move_to;
-
         let theta_cos = self.theta.cos();
         let theta_sin = self.theta.sin();
         let phi_cos = self.phi.cos();
         let phi_sin = self.phi.sin();
+
+        let move_to = Vec2::new(
+            Into::<f32>::into(self.backward_pressed) - Into::<f32>::into(self.forward_pressed),
+            Into::<f32>::into(self.left_pressed) - Into::<f32>::into(self.right_pressed),
+        );
+
+        if  move_to.x != 0. || move_to.y != 0. {
+            let norm = move_to.normalize();
+            let rotation = Mat2::from_cols_array(&[phi_cos, phi_sin, -phi_sin, phi_cos]);
+            camera.target = camera.target.with_xy(camera.target.xy() + rotation * norm * self.speed);
+        } 
 
         camera.eye = (
             camera.target.x + theta_sin * phi_cos * self.farness,
@@ -108,59 +113,11 @@ impl CameraController {
             camera.target.z + theta_cos * self.farness,
         ).into();
 
-        camera.up = glam::Vec3::new(
+        camera.up = Vec3::new(
             - phi_cos * theta_cos,
             - phi_sin * theta_cos,
             theta_sin,
         ).normalize();
-
-        /*
-        if (self.moving.fb === 0 && self.moving.lr === 0) return;
-        
-        self.target.x += self.speed * (
-          - Math.cos(self.phi) * self.moving.fb
-          - Math.sin(self.phi) * self.moving.lr
-        );
-        self.target.y += self.speed * (
-          - Math.sin(self.phi) * self.moving.fb
-          + Math.cos(self.phi) * self.moving.lr
-        );
-        updateModel.change = true; 
-        
-          [
-            self.target.x + Math.sin(self.theta) * Math.cos(self.phi) * self.farness,
-            self.target.y + Math.sin(self.theta) * Math.sin(self.phi) * self.farness,
-            self.target.z + Math.cos(self.theta) * self.farness,
-          ],
-          [self.target.x, self.target.y, self.target.z],
-          [
-            - Math.cos(self.phi) * Math.cos(self.theta),
-            - Math.sin(self.phi) * Math.cos(self.theta),
-            Math.sin(self.theta),
-          ]
-          */
-/*
-        // Prevents glitching when the camera gets too close to the
-        // center of the scene.
-        if self.forward_pressed && forward_len > self.speed {
-            camera.eye += forward_norm * self.speed;
-        }
-        if self.backward_pressed {
-            camera.eye -= forward_norm * self.speed;
-        }
-
-        // Redo radius calc in case the forward/backward is pressed.
-        let forward = camera.target - camera.eye;
-
-        if self.right_pressed {
-            // Rescale the distance between the target and the eye so 
-            // that it doesn't change. The eye, therefore, still 
-            // lies on the circle made by the target and eye.
-            camera.eye = camera.target - ( glam::Quat::from_axis_angle(camera.up, -self.angular_speed) * forward );
-        }
-        if self.left_pressed {
-            camera.eye = camera.target - (glam::Quat::from_axis_angle(camera.up,self.angular_speed) * forward);
-        } */
     }
 }
 
@@ -200,7 +157,7 @@ impl Input for CameraController {
         }
     }
 
-    fn process_scroll(&mut self, delta: &winit::event::MouseScrollDelta) {
+    fn process_scroll(&mut self, delta: &winit::event::MouseScrollDelta) { // TODO inverted in web wrt Linux
         match *delta {
             MouseScrollDelta::LineDelta(_dx, dy) => {
                 let zoom_factor = 1. + (dy.abs() * self.zoom_speed);
@@ -216,9 +173,9 @@ impl Input for CameraController {
                 let dy = physical_position.cast::<f32>().y * PIXEL_TO_LINE_FRAC;
                 let zoom_factor = 1. + (dy.abs() * self.zoom_speed);
                 let zoom_factor = if dy.is_sign_positive() {
-                    zoom_factor
-                } else {
                     1. / zoom_factor
+                } else {
+                    zoom_factor
                 };
 
                 self.farness *= zoom_factor;
