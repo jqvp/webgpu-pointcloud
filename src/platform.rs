@@ -1,3 +1,5 @@
+#[allow(dead_code)]
+
 #[cfg(not(target_family = "wasm"))]
 pub fn print(s: &String) {
     println!("{}", s);

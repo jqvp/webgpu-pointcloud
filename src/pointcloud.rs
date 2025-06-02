@@ -1,6 +1,6 @@
 use std::io::Cursor;
-use glam::Vec3;
-use las::Reader;
+use glam::{DVec3, Vec3};
+use las::{Reader, Vector};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -11,12 +11,21 @@ use wasm_bindgen_futures::JsFuture;
 
 use crate::engine::Encode;
 
+fn into_dvec3(v: Vector<f64>) -> DVec3 {
+    DVec3 { x: v.x, y: v.y, z: v.z }
+}
+fn into_vec3(v: DVec3) -> Vec3 {
+    Vec3 { x: v.x as f32, y: v.y as f32, z: v.z as f32 }
+}
 
 pub struct Pointcloud {
     points: Vec<Vec3>,
     intensities: Vec<f32>,
     point_buffer: wgpu::Buffer,
     intensity_buffer: wgpu::Buffer,
+    //return_number: Vec<u8>,
+    //number_of_returns: Vec<u8>,
+    //classification: Vec<u8>,
 }
 
 impl Pointcloud {
@@ -72,27 +81,22 @@ impl Pointcloud {
         })
     }
 
-    pub fn points(&self) -> &[Vec3] {
-        &self.points
-    }
-
     fn read_las(mut reader: Reader, len: usize) -> (Vec<Vec3>, Vec<f32>) {
         let mut points = Vec::with_capacity(len);
         let mut intensities = Vec::with_capacity(len);
+        
+        let header = reader.header();
 
-        let x_half = (reader.header().bounds().max.x - reader.header().bounds().min.x) * 0.5;
-        let y_half = (reader.header().bounds().max.y - reader.header().bounds().min.y) * 0.5;
-        let z_half = (reader.header().bounds().max.z - reader.header().bounds().min.z) * 0.5;
-        let transforms = reader.header().transforms().to_owned();
-        let min = reader.header().bounds().min;
+        let half = (into_dvec3(header.bounds().max) - into_dvec3(header.bounds().min)) * 0.5;
+        let transforms = header.transforms().to_owned();
+        let min = into_dvec3(header.bounds().min);
 
         for wrapped_point in reader.points() {
             let point = wrapped_point.unwrap();
-            points.push(Vec3::new(
-                ((point.x - min.x - x_half) * transforms.x.scale) as f32,
-                ((point.y- min.y - y_half) * transforms.y.scale) as f32,
-                ((point.z- min.z - z_half) * transforms.z.scale) as f32,
-            ));
+            points.push(
+                into_vec3( ( DVec3::new(point.x, point.y, point.z) - min - half)
+                * DVec3::new(transforms.x.scale, transforms.y.scale, transforms.z.scale) )
+            );
             
             intensities.push(point.intensity as f32);
         }
@@ -107,6 +111,6 @@ impl<'a> Encode<'a> for Pointcloud {
         
         recorder.set_vertex_buffer(0, self.point_buffer.slice(..));
         recorder.set_vertex_buffer(1, self.intensity_buffer.slice(..));
-        recorder.draw(0..4, 0..self.points().len() as u32);
+        recorder.draw(0..4, 0..self.points.len() as u32);
     }
 }

@@ -2,6 +2,7 @@ mod engine;
 mod camera;
 mod input;
 mod uniform;
+mod pipeline;
 
 pub use engine::Engine;
 pub use camera::*;

@@ -3,11 +3,10 @@ use std::{iter, sync::Arc};
 use dotenvy_macro::dotenv;
 use glam::Vec3;
 use winit::{
-    event::*,
-    window::Window,
+    event::*, window::Window
 };
 
-use super::{input::CameraController, *};
+use super::{input::*, pipeline::PointcloudPipeline, *};
 use crate::pointcloud::Pointcloud;
 
 
@@ -16,16 +15,16 @@ pub struct Engine {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    pub size: winit::dpi::PhysicalSize<u32>,
-    render_pipeline: wgpu::RenderPipeline,
     window: Arc<Window>,
-    camera: Camera,
-    camera_controller: CameraController,
+    
     uniform: Uniform,
     pointcloud: Pointcloud,
-    frame: f32,
+    pointcloud_pipeline: PointcloudPipeline,
     depth_view: wgpu::TextureView,
     depth_texture: wgpu::Texture,
+
+    camera: Camera,
+    input_server: InputServer,
 }
 
 impl Engine {
@@ -83,15 +82,22 @@ impl Engine {
             desired_maximum_frame_latency: 2,
         };
 
-        let camera = Camera {
-            eye: (2., 2., 0.).into(),
+        let mut camera = Camera {
+            eye: (1., 0., 0.).into(), // will be overriden by input_server.update
             target: (0.0, 0.0, 0.0).into(),
-            up: Vec3::Z,
-            aspect: config.width as f32 / config.height as f32,
-            fovy: 60.,
-            znear: 0.1,
-            zfar: 100.,
+            up: Vec3::Z, // will be overriden by input_server.update
+            projection: Projection::perspective(
+                0.01, 
+                1000., 
+                config.width as f32, 
+                config.height as f32, 
+                60f32.to_radians()
+            )
         };
+        let mut input_server = InputServer::new();
+        input_server.update(&mut camera); // setting camera according to initial state
+        dbg!(&camera);
+	dbg!(size);
 
         let uniform_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
@@ -110,19 +116,13 @@ impl Engine {
         });
         let uniform = Uniform::new(&queue, &device, &uniform_bind_group_layout, &camera, config.width, config.height);
 
-        let camera_controller = CameraController::new(1.);
 
         let pointcloud = Pointcloud::from_las(
             &device,
             &queue,
             dotenv!("POINTCLOUD_URL"),
         ).await.unwrap();
-
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/intensity.wgsl").into()),
-        });
-        
+        let pointcloud_pipeline = PointcloudPipeline::new(&device, &uniform_bind_group_layout, config.format);
 
         let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("depth texture"),
@@ -140,99 +140,19 @@ impl Engine {
         });
         let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[ &uniform_bind_group_layout ],
-            push_constant_ranges: &[],
-        });
-
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
-            layout: Some(&render_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: "vs_main".into(),
-                buffers: &[
-                    wgpu::VertexBufferLayout {
-                        attributes: &[
-                            wgpu::VertexAttribute {
-                                shader_location: 0,
-                                offset: 0,
-                                format: wgpu::VertexFormat::Float32x3,
-                            }
-                        ],
-                        array_stride: 12,
-                        step_mode: wgpu::VertexStepMode::Instance,
-                    },
-                    wgpu::VertexBufferLayout {
-                        attributes: &[
-                            wgpu::VertexAttribute {
-                                shader_location: 1,
-                                offset: 0,
-                                format: wgpu::VertexFormat::Float32,
-                            }
-                        ],
-                        array_stride: 4,
-                        step_mode: wgpu::VertexStepMode::Instance,
-                    },
-                ],
-                compilation_options: Default::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: "fs_main".into(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState {
-                        color: wgpu::BlendComponent::REPLACE,
-                        alpha: wgpu::BlendComponent::REPLACE,
-                    }),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: Default::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            // If the pipeline will be used with a multiview render pass, this
-            // indicates how many array layers the attachments will have.
-            multiview: None,
-            cache: None,
-        });
-
         Self {
             surface,
             device,
             queue,
             config,
-            size,
-            render_pipeline,
             window,
             uniform,
             camera,
-            camera_controller,
             pointcloud,
-            frame: 0.,
+            pointcloud_pipeline,
             depth_view,
             depth_texture,
+            input_server,
         }
     }
 
@@ -242,11 +162,15 @@ impl Engine {
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
-            self.size = new_size;
+            self.camera.projection.resize(
+                self.config.height as f32,
+                self.config.width as f32,
+                new_size.height as f32,
+                new_size.width as f32,
+            );
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
-            self.camera.aspect = self.config.width as f32 / self.config.height as f32;
             self.depth_texture = self.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("depth texture"),
                 size: wgpu::Extent3d {
@@ -267,14 +191,16 @@ impl Engine {
         }
     }
 
-    pub fn input(&mut self, event: &KeyEvent) -> bool {
-        self.camera_controller.process_events(event)
+    pub fn input(&mut self, event: &WindowEvent) -> bool {
+        self.input_server.window_input(event)
+    }
+
+    pub fn device_input(&mut self, event: &DeviceEvent) {
+        self.input_server.device_input(event);
     }
 
     pub fn update(&mut self) {
-        self.frame += 0.001;
-        //self.camera.eye = (2., 2., 0.).into();
-        self.camera_controller.update_camera(&mut self.camera);
+        self.input_server.update(&mut self.camera);
         self.uniform.update(&self.camera, &self.queue);
     }
 
@@ -299,8 +225,8 @@ impl Engine {
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
                             r: 0.,
-                            g: 0.,
-                            b: 0.,
+                            g: 0.5,
+                            b: 0.5,
                             a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
@@ -318,7 +244,7 @@ impl Engine {
                 timestamp_writes: None,
             });
 
-            render_pass.set_pipeline(&self.render_pipeline);
+            self.pointcloud_pipeline.record_command(&mut render_pass);
             self.uniform.record_command(&mut render_pass);
             self.pointcloud.record_command(&mut render_pass);
         }

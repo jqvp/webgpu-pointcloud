@@ -32,9 +32,9 @@ impl UniformData {
 }
 
 pub struct Uniform {
-    pub camera_uniform: UniformData,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
+    pub camera_uniform: UniformData,
 }
 
 impl Uniform {

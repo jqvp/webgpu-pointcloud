@@ -83,7 +83,7 @@ impl ApplicationHandler for App {
 
         state.window().request_redraw();
 
-        if state.window().id() == window_id {
+        if state.window().id() == window_id && !state.input(&event) {
             match event {
                 WindowEvent::CloseRequested => {
                     event_loop.exit();
@@ -95,13 +95,19 @@ impl ApplicationHandler for App {
                     state.update();
                     state.render().expect("Render ERROR!");
                 },
-                WindowEvent::KeyboardInput { event, ..} => {
-                    state.input(&event);
-                },
                 _ => {}
             }
         }
     }
 
+    fn device_event(
+            &mut self,
+            _event_loop: &ActiveEventLoop,
+            _device_id: winit::event::DeviceId,
+            event: winit::event::DeviceEvent,
+        ) {
+        let state = self.state.as_mut().unwrap();
+        state.device_input(&event);
+    }
 
 }
