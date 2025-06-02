@@ -18,7 +18,7 @@ impl InputServer {
     pub const fn new() -> Self {
         Self { 
             mouse_pressed: false,
-            camera_controller: CameraController::new(0.2, 2., std::f32::consts::PI / 300., 0.1)
+            camera_controller: CameraController::new(0.05, 2., std::f32::consts::PI / 300., 0.1)
         }
     }
     pub fn window_input(&mut self, event: &WindowEvent)-> bool {
@@ -157,7 +157,7 @@ impl Input for CameraController {
         }
     }
 
-    fn process_scroll(&mut self, delta: &winit::event::MouseScrollDelta) { // TODO inverted in web wrt Linux
+    fn process_scroll(&mut self, delta: &winit::event::MouseScrollDelta) {
         match *delta {
             MouseScrollDelta::LineDelta(_dx, dy) => {
                 let zoom_factor = 1. + (dy.abs() * self.zoom_speed);

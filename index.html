@@ -4,7 +4,16 @@
     <style>
       body,
       html {
+        margin: 0; background: #333;
         overflow: hidden;
+      }
+      h1, summary, li {
+        color: white;
+        font-family: Helvetica;
+        margin: 10px;
+      }
+      summary {
+        font-size: 26px;
       }
     </style>
     <title>Webgpu pointcloud viewer</title>
@@ -12,14 +21,27 @@
     <meta name="viewport" content="width=device-width, user-scalable=no" />
   </head>
 
-  <body style="margin: 0; background: #333;" id="body">
+  <body id="body">
+    <h1  id="error" hidden style=" color: red; border: 3px dotted red; border-radius: 20px; padding: 0 10px;" >
+      It appears you don't have WebGPU enabled. <br> Try using Firefox Nightly or Chromium
+    </h1>
     <script type="module">
       import init from "./pkg/lib_webgpu_pointcloud.js";
 
-      if (!navigator.gpu)
+      if (!navigator.gpu) {
+        let error = document.getElementById("error");
+        error.hidden = false;
+        error.style.display = "inline-block";
         console.error("It appears you don't have WebGPU enabled. Try using Firefox Nightly or Chromium");
+      }
       else
         init();
     </script>
+    <h1>Controls:</h1>
+    <ul>
+      <li>Drag mouse with left click to rotate</li>
+      <li>Move with WASD/arrows</li>
+      <li>Zoom with wheel</li>
+    </ul>
   </body>
 </html>
